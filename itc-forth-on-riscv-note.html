@@ -1,0 +1,225 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+<!-- 2024-08-29 -->
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>&lrm;</title>
+<meta name="author" content="DESKTOP-QTAJ5FN" />
+<meta name="generator" content="Org Mode" />
+</head>
+<body>
+<div id="content" class="content">
+<div id="outline-container-orgec60d00" class="outline-2">
+<h2 id="orgec60d00">在RISCV平台上使用匯編實現ITC FORTH的一些細節</h2>
+<div class="outline-text-2" id="text-orgec60d00">
+<p>
+如果你看到這篇文章，請不要過度迷信我所寫的內容，
+</p>
+
+<p>
+這些內容可能並不是最簡單的實現方式，也有可能有錯誤的地方，請你充分測試驗證。
+</p>
+</div>
+
+<div id="outline-container-orgc980e61" class="outline-3">
+<h3 id="orgc980e61">寄存器分配</h3>
+<div class="outline-text-3" id="text-orgc980e61">
+<p>
+RISCV的通用寄存器很多，但是需要注意有些寄存器可能會被匯編器當作特殊用途
+</p>
+
+<p>
+gp 寄存器:
+</p>
+
+<p>
+<a href="https://gcc.gnu.org/onlinedocs/gcc/RISC-V-Options.html#index-mrelax-6">https://gcc.gnu.org/onlinedocs/gcc/RISC-V-Options.html#index-mrelax-6</a>
+</p>
+
+<p>
+如果要使用gp寄存器的話記得關掉relax
+</p>
+
+<p>
+在使用gas的時候可以利用gcc的c預處理器功能，可以很方便的在代碼中進行寄存器重命名
+</p>
+
+<div class="org-src-container">
+<pre class="src src-shell"><code>gcc -x assembler-with-cpp</code>
+</pre>
+</div>
+
+<p>
+下面是我所用的一種寄存器分配方案，
+因爲我想讓rv32e指令集的機器運行我編寫的itc forth，
+所以使用的寄存器都在x0-x15之間，
+如果需要優化性能，可以加上tos寄存器。
+</p>
+
+<div class="org-src-container">
+<pre class="src src-asm"><code>#define wp t0</code>
+<code>#define xp t1</code>
+<code>#define up tp</code>
+<code>#define ip s0</code>
+<code>#define psp sp</code>
+<code>#define rsp ra</code>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgbc1657b" class="outline-3">
+<h3 id="orgbc1657b">WORD 佈局</h3>
+<div class="outline-text-3" id="text-orgbc1657b">
+<div class="org-src-container">
+<pre class="src src-asm"><code>.word link    # 下一個單詞的地址</code>
+<code>.word entry   # 跳轉地址，目標爲機器碼</code>
+<code>.word body    # 在普通forth單詞中作爲的跳轉地址，在docon單詞中作爲數據</code>
+<code>.byte attr    # 單詞的屬性</code>
+<code>.byte len     # 單詞名稱的長度，可以利用匯編器的機制來計算，省去手動計算</code>
+<code>.ascii "name" # 單詞名稱</code>
+<code>.p2align 2, 0 # 對齊4</code>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org7687915" class="outline-3">
+<h3 id="org7687915">NEXT 實現</h3>
+<div class="outline-text-3" id="text-org7687915">
+<div class="org-src-container">
+<pre class="src src-asm"><code>a_next:</code>
+<code>        lw wp, 0(ip)</code>
+<code>        addi ip, ip, regsize # regsize: 4 on rv32, 8 on rv64</code>
+<code>        lw xp, word_offset_entry(wp)</code>
+<code>        jr xp</code>
+</pre>
+</div>
+
+<p>
+如果注重速度的話可以實現爲macro，如果不注重的話j a_next調用即可
+</p>
+</div>
+</div>
+
+<div id="outline-container-org73aeac2" class="outline-3">
+<h3 id="org73aeac2">NEST 實現</h3>
+<div class="outline-text-3" id="text-org73aeac2">
+<div class="org-src-container">
+<pre class="src src-asm"><code>a_nest:</code>
+<code>        rpush ip</code>
+<code>        lw ip, word_offset_body(wp)</code>
+<code>        NEXT</code>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org4ce3b16" class="outline-3">
+<h3 id="org4ce3b16">UNNEST 實現</h3>
+<div class="outline-text-3" id="text-org4ce3b16">
+<div class="org-src-container">
+<pre class="src src-asm"><code>a_unnest:</code>
+<code>        rpop ip</code>
+<code>        NEXT</code>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgfe7ebde" class="outline-3">
+<h3 id="orgfe7ebde">EXECUTE 實現</h3>
+<div class="outline-text-3" id="text-orgfe7ebde">
+<div class="org-src-container">
+<pre class="src src-asm"><code>a_execute:</code>
+<code>        dpop wp</code>
+<code>        lw xp, word_offset_entry(wp)</code>
+<code>        jr xp</code>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org02cfa15" class="outline-3">
+<h3 id="org02cfa15">LIT 實現</h3>
+<div class="outline-text-3" id="text-org02cfa15">
+<div class="org-src-container">
+<pre class="src src-asm"><code>a_lit:</code>
+<code>        lw wp, 0(ip)</code>
+<code>        addi ip, ip, regsize</code>
+<code>        dpush wp</code>
+<code>        NEXT</code>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org54a714e" class="outline-3">
+<h3 id="org54a714e">BRANCH 實現</h3>
+<div class="outline-text-3" id="text-org54a714e">
+<div class="org-src-container">
+<pre class="src src-asm"><code>a_branch:</code>
+<code>        lw wp, 0(ip)</code>
+<code>        mv ip, wp</code>
+<code>        NEXT</code>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgf0c82a8" class="outline-3">
+<h3 id="orgf0c82a8">BRANCH0 實現</h3>
+<div class="outline-text-3" id="text-orgf0c82a8">
+<div class="org-src-container">
+<pre class="src src-asm"><code>a_branch0:</code>
+<code>        lw wp, 0(ip)</code>
+<code>        dpop xp</code>
+<code>        addi ip, ip, regsize</code>
+<code>        bnez xp, 1f</code>
+<code>        NEXT</code>
+<code>1:</code>
+<code>        mv ip, wp</code>
+<code>        NEXT</code>
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-orgffe7901" class="outline-3">
+<h3 id="orgffe7901">感謝</h3>
+<div class="outline-text-3" id="text-orgffe7901">
+<p>
+<a href="http://www.bradrodriguez.com/papers/index.html">http://www.bradrodriguez.com/papers/index.html</a>
+</p>
+
+<p>
+<a href="https://muforth.dev/threaded-code/">https://muforth.dev/threaded-code/</a>
+</p>
+
+<p>
+<a href="https://muforth.dev/threaded-code-literals-ifs-and-loops/">https://muforth.dev/threaded-code-literals-ifs-and-loops/</a>
+</p>
+
+<p>
+<a href="https://users.ece.cmu.edu/~koopman/stack_computers/index.html">https://users.ece.cmu.edu/~koopman/stack_computers/index.html</a>
+</p>
+
+<p>
+<a href="https://github.com/nornagon/jonesforth/blob/master/jonesforth.S">https://github.com/nornagon/jonesforth/blob/master/jonesforth.S</a>
+</p>
+
+<p>
+<a href="https://www.forth.com/starting-forth/9-forth-execution/">https://www.forth.com/starting-forth/9-forth-execution/</a>
+</p>
+</div>
+</div>
+</div>
+</div>
+<div id="postamble" class="status">
+<p>Last updated: 2024-08-29</p>
+</div>
+</body>
+</html>

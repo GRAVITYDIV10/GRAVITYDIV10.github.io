@@ -1,0 +1,132 @@
+* 在RISCV平台上使用匯編實現ITC FORTH的一些細節
+
+如果你看到這篇文章，請不要過度迷信我所寫的內容，
+
+這些內容可能並不是最簡單的實現方式，也有可能有錯誤的地方，請你充分測試驗證。
+
+** 寄存器分配
+
+RISCV的通用寄存器很多，但是需要注意有些寄存器可能會被匯編器當作特殊用途
+
+gp 寄存器:
+
+https://gcc.gnu.org/onlinedocs/gcc/RISC-V-Options.html#index-mrelax-6
+
+如果要使用gp寄存器的話記得關掉relax
+
+在使用gas的時候可以利用gcc的c預處理器功能，可以很方便的在代碼中進行寄存器重命名
+
+#+BEGIN_SRC shell
+gcc -x assembler-with-cpp
+#+END_SRC
+
+下面是我所用的一種寄存器分配方案，
+因爲我想讓rv32e指令集的機器運行我編寫的itc forth，
+所以使用的寄存器都在x0-x15之間，
+如果需要優化性能，可以加上tos寄存器。
+
+#+BEGIN_SRC asm
+#define wp t0
+#define xp t1
+#define up tp
+#define ip s0
+#define psp sp
+#define rsp ra
+#+END_SRC
+
+** WORD 佈局
+
+#+BEGIN_SRC asm
+  .word link    # 下一個單詞的地址
+  .word entry   # 跳轉地址，目標爲機器碼
+  .word body    # 在普通forth單詞中作爲的跳轉地址，在docon單詞中作爲數據
+  .byte attr    # 單詞的屬性
+  .byte len     # 單詞名稱的長度，可以利用匯編器的機制來計算，省去手動計算
+  .ascii "name" # 單詞名稱
+  .p2align 2, 0 # 對齊4
+#+END_SRC
+
+** NEXT 實現
+
+#+BEGIN_SRC asm
+  a_next:
+	  lw wp, 0(ip)
+	  addi ip, ip, regsize # regsize: 4 on rv32, 8 on rv64
+	  lw xp, word_offset_entry(wp)
+	  jr xp
+#+END_SRC
+
+如果注重速度的話可以實現爲macro，如果不注重的話j a_next調用即可
+
+** NEST 實現
+
+#+BEGIN_SRC asm
+  a_nest:
+	  rpush ip
+	  lw ip, word_offset_body(wp)
+	  NEXT
+#+END_SRC
+
+** UNNEST 實現
+
+#+BEGIN_SRC asm
+  a_unnest:
+	  rpop ip
+	  NEXT
+#+END_SRC
+
+** EXECUTE 實現
+
+#+BEGIN_SRC asm
+  a_execute:
+	  dpop wp
+	  lw xp, word_offset_entry(wp)
+	  jr xp
+#+END_SRC
+
+** LIT 實現
+
+#+BEGIN_SRC asm
+  a_lit:
+	  lw wp, 0(ip)
+	  addi ip, ip, regsize
+	  dpush wp
+	  NEXT
+#+END_SRC
+
+** BRANCH 實現
+
+#+BEGIN_SRC asm
+  a_branch:
+	  lw wp, 0(ip)
+	  mv ip, wp
+	  NEXT
+#+END_SRC
+
+** BRANCH0 實現
+
+#+BEGIN_SRC asm
+  a_branch0:
+	  lw wp, 0(ip)
+	  dpop xp
+	  addi ip, ip, regsize
+	  bnez xp, 1f
+	  NEXT
+  1:
+	  mv ip, wp
+	  NEXT
+#+END_SRC
+
+** 感謝
+
+http://www.bradrodriguez.com/papers/index.html
+
+https://muforth.dev/threaded-code/
+
+https://muforth.dev/threaded-code-literals-ifs-and-loops/
+
+https://users.ece.cmu.edu/~koopman/stack_computers/index.html
+
+https://github.com/nornagon/jonesforth/blob/master/jonesforth.S
+
+https://www.forth.com/starting-forth/9-forth-execution/

@@ -1,0 +1,81 @@
+* 博客
+
+** 关于
+
+[[file:about.org]]
+
+** FORTH
+
+在RISCV平台上使用匯編實現ITC FORTH的一些細節
+
+[[file:itc-forth-on-riscv-note.org]]
+
+** 软件
+
+基于GNU Autotools的项目交叉编译技巧
+
+[[file:gnu-autotools-cross-compile-note.org]]
+
+非特权访问RAW镜像文件中的文件系统
+
+[[file:access-filesystem-in-raw-image-without-privileged.org]]
+
+使用QEMU 9pfs启动文件系统中的rootfs
+
+[[file:boot-rootfs-using-qemu-and-9p.org]]
+
+** 通信
+
+kermit 协议
+
+[[file:kermit-basic-packet-how-to.org]]
+
+** 运维
+
+GPT分区表迁移需要注意的地方
+
+[[file:move-gpt-partition-table-disk-note.org]]
+
+** RISCV
+
+SG2002启动流程
+
+[[file:sg2002-startup.org]]
+
+CH58X裸机汇编指南
+
+[[file:ch58x-asm-tutor.org]]
+
+CH32V307裸机汇编指南
+
+[[file:ch32v307-asm-note.org]]
+
+** 点灯
+
+一些点灯思路
+
+[[file:bringup-note.org]]
+
+** Windows
+
+在Windows上使用tinc
+
+[[file:use-tinc-on-windows.org]]
+
+** GNU EMACS 与嵌入式开发
+
+使用GNU EMACS进行单片机开发
+
+[[file:use-gnu-emacs-develop-mcu.org]]
+
+使用GNU EMACS进行用户空间C程序开发
+
+[[file:use-gnu-emacs-develop-linux-userspace-c-program.org]]
+
+使用GNU EMACS进行linux内核/uboot开发
+
+[[file:use-gnu-emacs-develop-linux-kernel-and-uboot.org]]
+
+远程到服务器上使用GNU EMACS的一些设置
+
+[[file:use-gnu-emacs-on-remote-server.org]]
