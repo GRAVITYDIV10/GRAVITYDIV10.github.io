@@ -117,6 +117,8 @@ gcc -x assembler-with-cpp
 	  NEXT
 #+END_SRC
 
+
+
 ** 感謝
 
 http://www.bradrodriguez.com/papers/index.html
