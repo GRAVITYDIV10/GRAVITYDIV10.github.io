@@ -39,7 +39,10 @@ gcc -x assembler-with-cpp
 #+BEGIN_SRC asm
   .word link    # 下一個單詞的地址
   .word entry   # 跳轉地址，目標爲機器碼
-  .word body    # 在普通forth單詞中作爲的跳轉地址，在docon單詞中作爲數據
+  .word body    # 有3種情況:
+		# 在defcode生成的單詞中此字段沒用
+	        # 在defword生成的單詞中是單詞列表的地址，用來NEST跳轉到指定的單詞列表
+		# 在defconst生成的單詞中作爲數據
   .byte attr    # 單詞的屬性
   .byte len     # 單詞名稱的長度，可以利用匯編器的機制來計算，省去手動計算
   .ascii "name" # 單詞名稱
@@ -110,7 +113,7 @@ gcc -x assembler-with-cpp
 	  lw wp, 0(ip)
 	  dpop xp
 	  addi ip, ip, regsize
-	  bnez xp, 1f
+	  beqz xp, 1f
 	  NEXT
   1:
 	  mv ip, wp

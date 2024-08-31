@@ -3,7 +3,7 @@
 "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
 <head>
-<!-- 2024-08-30 -->
+<!-- 2024-08-31 -->
 <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>&lrm;</title>
@@ -77,7 +77,10 @@ gp 寄存器:
 <div class="org-src-container">
 <pre class="src src-asm"><code>.word link    # 下一個單詞的地址</code>
 <code>.word entry   # 跳轉地址，目標爲機器碼</code>
-<code>.word body    # 在普通forth單詞中作爲的跳轉地址，在docon單詞中作爲數據</code>
+<code>.word body    # 有3種情況:</code>
+<code>              # 在defcode生成的單詞中此字段沒用</code>
+<code>              # 在defword生成的單詞中是單詞列表的地址，用來NEST跳轉到指定的單詞列表</code>
+<code>              # 在defconst生成的單詞中作爲數據</code>
 <code>.byte attr    # 單詞的屬性</code>
 <code>.byte len     # 單詞名稱的長度，可以利用匯編器的機制來計算，省去手動計算</code>
 <code>.ascii "name" # 單詞名稱</code>
@@ -178,7 +181,7 @@ gp 寄存器:
 <code>        lw wp, 0(ip)</code>
 <code>        dpop xp</code>
 <code>        addi ip, ip, regsize</code>
-<code>        bnez xp, 1f</code>
+<code>        beqz xp, 1f</code>
 <code>        NEXT</code>
 <code>1:</code>
 <code>        mv ip, wp</code>
@@ -221,7 +224,7 @@ gp 寄存器:
 </div>
 </div>
 <div id="postamble" class="status">
-<p>Last updated: 2024-08-30</p>
+<p>Last updated: 2024-08-31</p>
 </div>
 </body>
 </html>
