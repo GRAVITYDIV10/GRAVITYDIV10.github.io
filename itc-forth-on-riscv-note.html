@@ -3,7 +3,7 @@
 "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
 <html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
 <head>
-<!-- 2024-08-31 -->
+<!-- 2024-09-01 -->
 <meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>&lrm;</title>
@@ -28,11 +28,51 @@
 <h3 id="org54481d8">一些無關內容</h3>
 <div class="outline-text-3" id="text-org54481d8">
 <p>
-我不是C編譯器專家，我用C寫的itc forth有暴棧問題(C的棧)，我沒辦法理解C的尾部調用優化策略，
+我不是C編譯器專家
 </p>
 
 <p>
-這種問題讓人無從下手，所以我拿匯編來編寫這個東西。
+使用C實現ITC FORTH，需要注意幾個問題：
+</p>
+
+<ol class="org-ol">
+<li>尾調用優化</li>
+</ol>
+
+<p>
+確保你的編譯器打開了TCO
+</p>
+
+<p>
+除了打開TCO，還需要驗證你的代碼是可以被編譯器優化的:
+</p>
+
+<p>
+使用調試器檢查調用棧:
+</p>
+
+
+<div id="orgaa7cc37" class="figure">
+<p><img src="forth-in-c-checkstackusage.png" alt="forth-in-c-checkstackusage.png" />
+</p>
+</div>
+
+
+<div id="org8cc9158" class="figure">
+<p><img src="forth-in-c-loop-test.png" alt="forth-in-c-loop-test.png" />
+</p>
+</div>
+
+<p>
+需要測試每個使用C編寫的word，確保所有C編寫的word都被尾部調用優化。
+</p>
+
+<p>
+編譯器可以開啓 -fstack-usage 來生成棧使用情況的文件報告
+</p>
+
+<p>
+如果函數沒有被尾調用優化，就需要檢查函數裏面是否使用棧來存放數據。
 </p>
 </div>
 </div>
@@ -237,7 +277,7 @@ gp 寄存器:
 </div>
 </div>
 <div id="postamble" class="status">
-<p>Last updated: 2024-08-31</p>
+<p>Last updated: 2024-09-01</p>
 </div>
 </body>
 </html>
