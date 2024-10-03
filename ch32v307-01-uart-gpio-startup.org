@@ -1,0 +1,408 @@
+* 調通開發板的UART和GPIO
+
+** 編寫makefile和linkscript
+
+*** makefile:
+
+#+BEGIN_SRC shell
+SRCS += ch32v307.s
+
+FW_NAME ?= ch32v307
+
+CROSS_COMPILE ?= riscv64-unknown-elf-
+CC = $(CROSS_COMPILE)gcc
+OD = $(CROSS_COMPILE)objdump
+OC = $(CROSS_COMPILE)objcopy
+SZ = $(CROSS_COMPILE)size
+
+LINK_SCRIPT ?= link.ld
+
+CFLAGS += \
+        -march=rv32imac_zicsr -mabi=ilp32 \
+        -mno-relax -nostdlib \
+        -x assembler-with-cpp -ggdb \
+        -T $(LINK_SCRIPT)
+
+all: $(FW_NAME).elf $(FW_NAME).bin $(FW_NAME).hex $(FW_NAME).dis
+        $(SZ) $(FW_NAME).elf
+
+clean:
+        rm -f *.out $(FW_NAME).dis $(FW_NAME).elf $(FW_NAME).bin $(FW_NAME).hex
+
+$(FW_NAME).hex:
+        $(OC) -O ihex $(FW_NAME).elf $(FW_NAME).hex
+
+$(FW_NAME).bin:
+        $(OC) -O binary $(FW_NAME).elf $(FW_NAME).bin
+
+$(FW_NAME).elf:
+        $(CC) $(CFLAGS) $(SRCS) -o $(FW_NAME).elf
+
+$(FW_NAME).dis: $(FW_NAME).elf
+        $(OD) -d -s $(FW_NAME).elf > $(FW_NAME).dis
+#+END_SRC
+
+這個makefile編譯完成後會生成 bin hex 文件，分別用於不同的燒錄軟件:
+
+bin:
+
+1. wchisp (https://github.com/ch32-rs/wchisp) 使用Rust編寫的開源燒錄軟件，可以從USB端口燒錄
+
+hex:
+
+1. WCH-LinkUtily (https://www.wch.cn/downloads/WCH-LinkUtility_ZIP.html) 沁恆官方的燒錄軟件，通過WCHLink鏈接開發板的SWD端口進行燒錄
+
+2. wchisptools (https://www.wch.cn/download/WCHISPTool_Setup_exe.html) 沁恆官方的燒錄軟件，通過電腦鏈接開發板的USB口進行燒錄
+
+*** linkscript:
+
+注意: 這裏的ROM, RAM的大小是CH32V307配置過的，通過WCHLinkUtilty配置
+
+如果你的下載軟件無法配置的話最好把這裏設置爲最小:
+
+ROM: 192K
+RAM: 32K
+
+#+BEGIN_SRC text
+ENTRY(_start)
+
+MEMORY
+{
+        ROM (rx) : ORIGIN = 0x00000000, LENGTH = 192K
+        RAM (rwx): ORIGIN = 0x20000000, LENGTH = 128K
+}
+
+SECTIONS
+{
+        .text :
+        {
+                *(.text)
+                *(.text*)
+                . = ALIGN(4);
+                *(.rodata)
+                *(.rodata*)
+                . = ALIGN(4);
+        } >ROM AT>ROM
+
+        .bss (NOLOAD) :
+        {
+                . = ALIGN(4);
+                *(.bss)
+                . = ALIGN(4);
+        } >RAM AT>ROM
+}
+#+END_SRC
+
+將這個文件保存爲 link.ld
+
+** 調通GPIO
+
+使用匯編語言點亮一個LED比UART要容易一點
+
+大多數人遇到最新的開發板第一件要做的事情就是點燈了
+
+CH32V307操縱GPIO的流程:
+
+1. 在RCC控制器裏面使能對應GPIO控制器的時鐘
+
+2. 在GPIO控制器裏面配置引腳的模式爲推輓輸出
+
+3. 在GPIO控制器裏面拉高拉低引腳
+
+*** 點亮 PB4 上的 LED
+
+我這裏用的開發板是塬地的一款開發板，它在引腳PB4上鏈接了一個LED
+
+代碼示例:
+
+#+BEGIN_SRC asm
+        .global _start
+_start:
+        .option norvc;
+        j reset
+        .option rvc;
+
+reset:
+        .equ RCC_BASE, 0x40021000
+        .equ RCC_APB2PCENR, 0x18
+        .equ RCC_IOPB_EN, (1 << 3)
+
+        # 使能GPIOB的时钟
+        li t0, RCC_BASE
+        lw t1, RCC_APB2PCENR(t0)
+        li t2, RCC_IOPB_EN
+        or t1, t1, t2
+        sw t1, RCC_APB2PCENR(t0)
+
+        .equ GPIOB_BASE, 0x40010C00
+        .equ GPIO_CFGLR, 0x00
+        .equ GPIO_OUTDR, 0x0C
+        .equ GPIO_PB4CFG_MASK, (0xF << 16)
+        .equ GPIO_PB4CFG_PPOUT_2Mhz, (0x2 << 16)
+
+        # 将PB4配置为推挽输出模式
+        li t0, GPIOB_BASE
+        lw t1, GPIO_CFGLR(t0)
+        li t2, GPIO_PB4CFG_MASK
+        xori t2, t2, -1
+        and t1, t1, t2
+        li t2, GPIO_PB4CFG_PPOUT_2Mhz
+        or t1, t1, t2
+        sw t2, GPIO_CFGLR(t0)
+
+        # PB4输出高电平
+        lw t1, GPIO_OUTDR(t0)
+        ori t1, t1, (1 << 4)
+        sw t1, GPIO_OUTDR(t0)
+
+1:
+        j 1b
+#+END_SRC
+
+將這些代碼寫入 ch32v307.s 文件然後保存，使用 make 編譯，然後燒錄程序到電路板
+
+接下來就可以看到PB4上的LED被點亮了
+
+如果你的板子沒有LED，也可以用示波器，邏輯分析儀或者萬用表測量一下PB4引腳
+
+*** 點亮 PA15 上的 LED
+
+在塬地的開發板上有第二顆可以主控控制的LED，鏈接到PA15引腳上
+
+示例看到這裏，考驗你的時候到了
+
+你可以試着自己閱讀寄存器手冊來點亮這顆LED，一定要有耐心。
+
+不過點不亮的話我也會提供參考代碼:
+
+#+BEGIN_SRC asm
+        .global _start
+_start:
+        .option norvc;
+        j reset
+        .option rvc;
+
+reset:
+        .equ RCC_BASE, 0x40021000
+        .equ RCC_APB2PCENR, 0x18
+        .equ RCC_IOPB_EN, (1 << 3)
+        .equ RCC_IOPA_EN, (1 << 2)
+
+        # 使能GPIOB GPIOA的时钟
+        li t0, RCC_BASE
+        lw t1, RCC_APB2PCENR(t0)
+        li t2, RCC_IOPB_EN | RCC_IOPA_EN
+        or t1, t1, t2
+        sw t1, RCC_APB2PCENR(t0)
+
+        .equ GPIOB_BASE, 0x40010C00
+        .equ GPIOA_BASE, 0x40010800
+        .equ GPIO_CFGLR, 0x00
+        .equ GPIO_CFGHR, 0x04
+        .equ GPIO_OUTDR, 0x0C
+        .equ GPIO_PB4CFG_MASK, (0xF << 16)
+        .equ GPIO_PB4CFG_PPOUT_2Mhz, (0x2 << 16)
+        .equ GPIO_PA15CFG_MASK, (0xF << 28)
+        .equ GPIO_PA15CFG_PPOUT_2Mhz, (0x2 << 28)
+
+        # 将PB4配置为推挽输出模式
+        li t0, GPIOB_BASE
+        lw t1, GPIO_CFGLR(t0)
+        li t2, GPIO_PB4CFG_MASK
+        xori t2, t2, -1
+        and t1, t1, t2
+        li t2, GPIO_PB4CFG_PPOUT_2Mhz
+        or t1, t1, t2
+        sw t2, GPIO_CFGLR(t0)
+
+        # 将PA15配置为推挽输出模式
+        li t0, GPIOA_BASE
+        lw t1, GPIO_CFGHR(t0)
+        li t2, GPIO_PA15CFG_MASK
+        xori t2, t2, -1
+        and t1, t1, t2
+        li t2, GPIO_PA15CFG_PPOUT_2Mhz
+        or t1, t1, t2
+        sw t2, GPIO_CFGHR(t0)
+
+        # PB4输出高电平
+        li t0, GPIOB_BASE
+        lw t1, GPIO_OUTDR(t0)
+        ori t1, t1, (1 << 4)
+        sw t1, GPIO_OUTDR(t0)
+
+        # PA15输出高电平
+        li t0, GPIOA_BASE
+        lw t1, GPIO_OUTDR(t0)
+        li t2, (1 << 15)
+        or t1, t1, t2
+        sw t1, GPIO_OUTDR(t0)
+
+1:
+        j 1b
+#+END_SRC
+
+** 調通 UART1 TX
+
+CH32V307使用UART TX的流程:
+
+1. 在RCC控制器裏面使能對應UART控制器的時鐘
+
+2. 在GPIO控制器裏面配置引腳的模式爲推輓復用輸出
+
+3. 在UART控制器裏面配置波特率，使能UART控制器，配置模式，使能TX
+
+4. 將數據填入UART控制器，然後通過TX引腳發送出去
+
+配置PA9爲UART1 TX，然後配置UART控制器，然後使用115200波特率輸出一大堆 0x55，代碼在這裏:
+
+#+BEGIN_SRC asm
+	.global _start
+_start:
+	.option norvc;
+	j reset
+	.option rvc;
+
+reset:
+	.equ RCC_BASE, 0x40021000
+	.equ RCC_APB2PCENR, 0x18
+	.equ RCC_IOPB_EN, (1 << 3)
+	.equ RCC_IOPA_EN, (1 << 2)
+	.equ RCC_UART1_EN, (1 << 14)
+
+	# 使能时钟:
+	# GPIOA GPIOB
+	# UART1
+	li t0, RCC_BASE
+	lw t1, RCC_APB2PCENR(t0)
+	li t2, RCC_IOPB_EN | RCC_IOPA_EN | RCC_UART1_EN
+	or t1, t1, t2
+	sw t1, RCC_APB2PCENR(t0)
+
+	.equ GPIOB_BASE, 0x40010C00
+	.equ GPIOA_BASE, 0x40010800
+	.equ GPIO_CFGLR, 0x00
+	.equ GPIO_CFGHR, 0x04
+	.equ GPIO_OUTDR, 0x0C
+	.equ GPIO_PB4CFG_MASK, (0xF << 16)
+	.equ GPIO_PB4CFG_PPOUT_2Mhz, (0x2 << 16)
+	.equ GPIO_PA15CFG_MASK, (0xF << 28)
+	.equ GPIO_PA15CFG_PPOUT_2Mhz, (0x2 << 28)
+	.equ GPIO_PA9CFG_MASK, (0xF << 4)
+	.equ GPIO_PA9CFG_MUPPOUT_50Mhz, (0xB << 4)
+
+	# 将PB4配置为推挽输出模式
+	li t0, GPIOB_BASE
+	lw t1, GPIO_CFGLR(t0)
+	li t2, GPIO_PB4CFG_MASK
+	xori t2, t2, -1
+	and t1, t1, t2
+	li t2, GPIO_PB4CFG_PPOUT_2Mhz
+	or t1, t1, t2
+	sw t2, GPIO_CFGLR(t0)
+
+	# 将PA15配置为推挽输出模式
+	# 将PA9配置为复用推挽输出模式
+	li t0, GPIOA_BASE
+	lw t1, GPIO_CFGHR(t0)
+	li t2, GPIO_PA15CFG_MASK | GPIO_PA9CFG_MASK
+	xori t2, t2, -1
+	and t1, t1, t2
+	li t2, GPIO_PA15CFG_PPOUT_2Mhz | GPIO_PA9CFG_MUPPOUT_50Mhz
+	or t1, t1, t2
+	sw t2, GPIO_CFGHR(t0)
+
+	# PB4输出高电平
+	li t0, GPIOB_BASE
+	lw t1, GPIO_OUTDR(t0)
+	ori t1, t1, (1 << 4)
+	sw t1, GPIO_OUTDR(t0)
+
+	# PA15输出高电平
+	li t0, GPIOA_BASE
+	lw t1, GPIO_OUTDR(t0)
+	li t2, (1 << 15)
+	or t1, t1, t2
+	sw t1, GPIO_OUTDR(t0)
+
+	.equ UART1_BASE, 0x40013800
+	.equ UART_DATAR, 0x04
+	.equ UART_BRR,   0x08
+
+	# 从寄存器手册内容和时钟树可以得到:
+	# UART1的时钟源为PCLK2,即APB2提供的
+	# PCLK2的时钟源是HCLK
+	# HCLK的时钟源是SYSCLK
+
+	# SYSCLK默认使用HSI，SYSCLK=8Mhz
+	# SYSCLK根据HPRE分频得到HCLK，默认没有分频，HCLK=8Mhz
+	# HCLK根据PPRE2分频得到PCLK2，默认没有分频，PCLK2=8Mhz
+
+	# 波特率计算公式:
+	# UART1这里的FCLK是PCLK2
+	# 波特率 = FCLK / (16 * UARTDIV)
+	# 那么:
+	# (8 * 1000 * 1000) / (16 * 4.34) = 115207
+	# UARTDIV=4.34
+	# UARTDIV的计算公式:
+	# UARTDIV=DIV_M+(DIV_F/16)
+	# 那么:
+	# 4 + (5 / 16) = 4.3125
+	# DIV_M=4
+	# DIV_F=5
+
+	.equ BAUD_115200, ((4 << 4) | (5 << 0))
+
+	li t0, UART1_BASE
+
+	# 配置UART1波特率为115200
+	li t1, BAUD_115200
+	sw t1, UART_BRR(t0)
+
+	# 使能UART控制器和TX功能
+	.equ UART_CTLR1, 0x0C
+	.equ UART_UE, (1 << 13)
+	.equ UART_TE, (1 << 3)
+	li t1, UART_UE | UART_TE
+	sw t1, UART_CTLR1(t0)
+
+	# UART1 PA9 TX 不断发送0x55
+	li t0, UART1_BASE
+	li t1, 0x55
+1:
+	sw t1, UART_DATAR(t0)
+	j 1b
+#+END_SRC
+
+鏈接電路板的PA9到USB轉串口的RX腳，上電燒錄這段代碼，復位電路板，
+
+然後配置USB轉串口的波特率爲115200，打開串口軟件，會顯示接收到一大堆UUUU
+
+到這裏串口TX的程序仍然沒有結束，我們還需要處理一個問題:
+
+按UART控制器的速率傳輸數據，即我們需要UART控制器傳輸完成後再往發送寄存器填下一個字節的數據。
+
+我們需要改一下發送的代碼:
+
+#+BEGIN_SRC asm
+        # UART1 PA9 TX 不断发送 0x55 0x75
+        .equ UART_STATR, 0x00
+        .equ UART_TC, (1 << 6)
+        li t0, UART1_BASE
+        li t2, 0x55
+
+2:
+1:
+        lw t1, UART_STATR(t0)
+        andi t1, t1, UART_TC
+        beqz t1, 1b
+        sw t2, UART_DATAR(t0)
+        xori t2, t2, (1 << 5)
+        j 2b  
+#+END_SRC
+
+這樣，你的串口軟件應該會收到一大堆UuUuUuUuUuUuUu了
+
+** END
+
+

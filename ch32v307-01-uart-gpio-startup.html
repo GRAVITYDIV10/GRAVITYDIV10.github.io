@@ -1,0 +1,520 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+<!-- 2024-10-03 -->
+<meta http-equiv="Content-Type" content="text/html;charset=utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>&lrm;</title>
+<meta name="author" content="DESKTOP-QTAJ5FN" />
+<meta name="generator" content="Org Mode" />
+</head>
+<body>
+<div id="content" class="content">
+<div id="outline-container-orga2b9c06" class="outline-2">
+<h2 id="orga2b9c06">調通開發板的UART和GPIO</h2>
+<div class="outline-text-2" id="text-orga2b9c06">
+</div>
+<div id="outline-container-org8a53a5f" class="outline-3">
+<h3 id="org8a53a5f">編寫makefile和linkscript</h3>
+<div class="outline-text-3" id="text-org8a53a5f">
+</div>
+<div id="outline-container-orgf5e9a0e" class="outline-4">
+<h4 id="orgf5e9a0e">makefile:</h4>
+<div class="outline-text-4" id="text-orgf5e9a0e">
+<div class="org-src-container">
+<pre class="src src-shell"><code>SRCS += ch32v307.s</code>
+<code></code>
+<code>FW_NAME ?= ch32v307</code>
+<code></code>
+<code>CROSS_COMPILE ?= riscv64-unknown-elf-</code>
+<code>CC = $(CROSS_COMPILE)gcc</code>
+<code>OD = $(CROSS_COMPILE)objdump</code>
+<code>OC = $(CROSS_COMPILE)objcopy</code>
+<code>SZ = $(CROSS_COMPILE)size</code>
+<code></code>
+<code>LINK_SCRIPT ?= link.ld</code>
+<code></code>
+<code>CFLAGS += \</code>
+<code>        -march=rv32imac_zicsr -mabi=ilp32 \</code>
+<code>        -mno-relax -nostdlib \</code>
+<code>        -x assembler-with-cpp -ggdb \</code>
+<code>        -T $(LINK_SCRIPT)</code>
+<code></code>
+<code>all: $(FW_NAME).elf $(FW_NAME).bin $(FW_NAME).hex $(FW_NAME).dis</code>
+<code>        $(SZ) $(FW_NAME).elf</code>
+<code></code>
+<code>clean:</code>
+<code>        rm -f *.out $(FW_NAME).dis $(FW_NAME).elf $(FW_NAME).bin $(FW_NAME).hex</code>
+<code></code>
+<code>$(FW_NAME).hex:</code>
+<code>        $(OC) -O ihex $(FW_NAME).elf $(FW_NAME).hex</code>
+<code></code>
+<code>$(FW_NAME).bin:</code>
+<code>        $(OC) -O binary $(FW_NAME).elf $(FW_NAME).bin</code>
+<code></code>
+<code>$(FW_NAME).elf:</code>
+<code>        $(CC) $(CFLAGS) $(SRCS) -o $(FW_NAME).elf</code>
+<code></code>
+<code>$(FW_NAME).dis: $(FW_NAME).elf</code>
+<code>        $(OD) -d -s $(FW_NAME).elf &gt; $(FW_NAME).dis</code>
+</pre>
+</div>
+
+<p>
+這個makefile編譯完成後會生成 bin hex 文件，分別用於不同的燒錄軟件:
+</p>
+
+<p>
+bin:
+</p>
+
+<ol class="org-ol">
+<li>wchisp (<a href="https://github.com/ch32-rs/wchisp">https://github.com/ch32-rs/wchisp</a>) 使用Rust編寫的開源燒錄軟件，可以從USB端口燒錄</li>
+</ol>
+
+<p>
+hex:
+</p>
+
+<ol class="org-ol">
+<li>WCH-LinkUtily (<a href="https://www.wch.cn/downloads/WCH-LinkUtility_ZIP.html">https://www.wch.cn/downloads/WCH-LinkUtility_ZIP.html</a>) 沁恆官方的燒錄軟件，通過WCHLink鏈接開發板的SWD端口進行燒錄</li>
+
+<li>wchisptools (<a href="https://www.wch.cn/download/WCHISPTool_Setup_exe.html">https://www.wch.cn/download/WCHISPTool_Setup_exe.html</a>) 沁恆官方的燒錄軟件，通過電腦鏈接開發板的USB口進行燒錄</li>
+</ol>
+</div>
+</div>
+
+<div id="outline-container-org256a5c9" class="outline-4">
+<h4 id="org256a5c9">linkscript:</h4>
+<div class="outline-text-4" id="text-org256a5c9">
+<p>
+注意: 這裏的ROM, RAM的大小是CH32V307配置過的，通過WCHLinkUtilty配置
+</p>
+
+<p>
+如果你的下載軟件無法配置的話最好把這裏設置爲最小:
+</p>
+
+<p>
+ROM: 192K
+RAM: 32K
+</p>
+
+<div class="org-src-container">
+<pre class="src src-text"><code>ENTRY(_start)</code>
+<code></code>
+<code>MEMORY</code>
+<code>{</code>
+<code>        ROM (rx) : ORIGIN = 0x00000000, LENGTH = 192K</code>
+<code>        RAM (rwx): ORIGIN = 0x20000000, LENGTH = 128K</code>
+<code>}</code>
+<code></code>
+<code>SECTIONS</code>
+<code>{</code>
+<code>        .text :</code>
+<code>        {</code>
+<code>                *(.text)</code>
+<code>                *(.text*)</code>
+<code>                . = ALIGN(4);</code>
+<code>                *(.rodata)</code>
+<code>                *(.rodata*)</code>
+<code>                . = ALIGN(4);</code>
+<code>        } &gt;ROM AT&gt;ROM</code>
+<code></code>
+<code>        .bss (NOLOAD) :</code>
+<code>        {</code>
+<code>                . = ALIGN(4);</code>
+<code>                *(.bss)</code>
+<code>                . = ALIGN(4);</code>
+<code>        } &gt;RAM AT&gt;ROM</code>
+<code>}</code>
+</pre>
+</div>
+
+<p>
+將這個文件保存爲 link.ld
+</p>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org5cf5d70" class="outline-3">
+<h3 id="org5cf5d70">調通GPIO</h3>
+<div class="outline-text-3" id="text-org5cf5d70">
+<p>
+使用匯編語言點亮一個LED比UART要容易一點
+</p>
+
+<p>
+大多數人遇到最新的開發板第一件要做的事情就是點燈了
+</p>
+
+<p>
+CH32V307操縱GPIO的流程:
+</p>
+
+<ol class="org-ol">
+<li>在RCC控制器裏面使能對應GPIO控制器的時鐘</li>
+
+<li>在GPIO控制器裏面配置引腳的模式爲推輓輸出</li>
+
+<li>在GPIO控制器裏面拉高拉低引腳</li>
+</ol>
+</div>
+
+<div id="outline-container-org494bada" class="outline-4">
+<h4 id="org494bada">點亮 PB4 上的 LED</h4>
+<div class="outline-text-4" id="text-org494bada">
+<p>
+我這裏用的開發板是塬地的一款開發板，它在引腳PB4上鏈接了一個LED
+</p>
+
+<p>
+代碼示例:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-asm"><code>        .global _start</code>
+<code>_start:</code>
+<code>        .option norvc;</code>
+<code>        j reset</code>
+<code>        .option rvc;</code>
+<code></code>
+<code>reset:</code>
+<code>        .equ RCC_BASE, 0x40021000</code>
+<code>        .equ RCC_APB2PCENR, 0x18</code>
+<code>        .equ RCC_IOPB_EN, (1 &lt;&lt; 3)</code>
+<code></code>
+<code>        # 使能GPIOB的时钟</code>
+<code>        li t0, RCC_BASE</code>
+<code>        lw t1, RCC_APB2PCENR(t0)</code>
+<code>        li t2, RCC_IOPB_EN</code>
+<code>        or t1, t1, t2</code>
+<code>        sw t1, RCC_APB2PCENR(t0)</code>
+<code></code>
+<code>        .equ GPIOB_BASE, 0x40010C00</code>
+<code>        .equ GPIO_CFGLR, 0x00</code>
+<code>        .equ GPIO_OUTDR, 0x0C</code>
+<code>        .equ GPIO_PB4CFG_MASK, (0xF &lt;&lt; 16)</code>
+<code>        .equ GPIO_PB4CFG_PPOUT_2Mhz, (0x2 &lt;&lt; 16)</code>
+<code></code>
+<code>        # 将PB4配置为推挽输出模式</code>
+<code>        li t0, GPIOB_BASE</code>
+<code>        lw t1, GPIO_CFGLR(t0)</code>
+<code>        li t2, GPIO_PB4CFG_MASK</code>
+<code>        xori t2, t2, -1</code>
+<code>        and t1, t1, t2</code>
+<code>        li t2, GPIO_PB4CFG_PPOUT_2Mhz</code>
+<code>        or t1, t1, t2</code>
+<code>        sw t2, GPIO_CFGLR(t0)</code>
+<code></code>
+<code>        # PB4输出高电平</code>
+<code>        lw t1, GPIO_OUTDR(t0)</code>
+<code>        ori t1, t1, (1 &lt;&lt; 4)</code>
+<code>        sw t1, GPIO_OUTDR(t0)</code>
+<code></code>
+<code>1:</code>
+<code>        j 1b</code>
+</pre>
+</div>
+
+<p>
+將這些代碼寫入 ch32v307.s 文件然後保存，使用 make 編譯，然後燒錄程序到電路板
+</p>
+
+<p>
+接下來就可以看到PB4上的LED被點亮了
+</p>
+
+<p>
+如果你的板子沒有LED，也可以用示波器，邏輯分析儀或者萬用表測量一下PB4引腳
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgffc6d6b" class="outline-4">
+<h4 id="orgffc6d6b">點亮 PA15 上的 LED</h4>
+<div class="outline-text-4" id="text-orgffc6d6b">
+<p>
+在塬地的開發板上有第二顆可以主控控制的LED，鏈接到PA15引腳上
+</p>
+
+<p>
+示例看到這裏，考驗你的時候到了
+</p>
+
+<p>
+你可以試着自己閱讀寄存器手冊來點亮這顆LED，一定要有耐心。
+</p>
+
+<p>
+不過點不亮的話我也會提供參考代碼:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-asm"><code>        .global _start</code>
+<code>_start:</code>
+<code>        .option norvc;</code>
+<code>        j reset</code>
+<code>        .option rvc;</code>
+<code></code>
+<code>reset:</code>
+<code>        .equ RCC_BASE, 0x40021000</code>
+<code>        .equ RCC_APB2PCENR, 0x18</code>
+<code>        .equ RCC_IOPB_EN, (1 &lt;&lt; 3)</code>
+<code>        .equ RCC_IOPA_EN, (1 &lt;&lt; 2)</code>
+<code></code>
+<code>        # 使能GPIOB GPIOA的时钟</code>
+<code>        li t0, RCC_BASE</code>
+<code>        lw t1, RCC_APB2PCENR(t0)</code>
+<code>        li t2, RCC_IOPB_EN | RCC_IOPA_EN</code>
+<code>        or t1, t1, t2</code>
+<code>        sw t1, RCC_APB2PCENR(t0)</code>
+<code></code>
+<code>        .equ GPIOB_BASE, 0x40010C00</code>
+<code>        .equ GPIOA_BASE, 0x40010800</code>
+<code>        .equ GPIO_CFGLR, 0x00</code>
+<code>        .equ GPIO_CFGHR, 0x04</code>
+<code>        .equ GPIO_OUTDR, 0x0C</code>
+<code>        .equ GPIO_PB4CFG_MASK, (0xF &lt;&lt; 16)</code>
+<code>        .equ GPIO_PB4CFG_PPOUT_2Mhz, (0x2 &lt;&lt; 16)</code>
+<code>        .equ GPIO_PA15CFG_MASK, (0xF &lt;&lt; 28)</code>
+<code>        .equ GPIO_PA15CFG_PPOUT_2Mhz, (0x2 &lt;&lt; 28)</code>
+<code></code>
+<code>        # 将PB4配置为推挽输出模式</code>
+<code>        li t0, GPIOB_BASE</code>
+<code>        lw t1, GPIO_CFGLR(t0)</code>
+<code>        li t2, GPIO_PB4CFG_MASK</code>
+<code>        xori t2, t2, -1</code>
+<code>        and t1, t1, t2</code>
+<code>        li t2, GPIO_PB4CFG_PPOUT_2Mhz</code>
+<code>        or t1, t1, t2</code>
+<code>        sw t2, GPIO_CFGLR(t0)</code>
+<code></code>
+<code>        # 将PA15配置为推挽输出模式</code>
+<code>        li t0, GPIOA_BASE</code>
+<code>        lw t1, GPIO_CFGHR(t0)</code>
+<code>        li t2, GPIO_PA15CFG_MASK</code>
+<code>        xori t2, t2, -1</code>
+<code>        and t1, t1, t2</code>
+<code>        li t2, GPIO_PA15CFG_PPOUT_2Mhz</code>
+<code>        or t1, t1, t2</code>
+<code>        sw t2, GPIO_CFGHR(t0)</code>
+<code></code>
+<code>        # PB4输出高电平</code>
+<code>        li t0, GPIOB_BASE</code>
+<code>        lw t1, GPIO_OUTDR(t0)</code>
+<code>        ori t1, t1, (1 &lt;&lt; 4)</code>
+<code>        sw t1, GPIO_OUTDR(t0)</code>
+<code></code>
+<code>        # PA15输出高电平</code>
+<code>        li t0, GPIOA_BASE</code>
+<code>        lw t1, GPIO_OUTDR(t0)</code>
+<code>        li t2, (1 &lt;&lt; 15)</code>
+<code>        or t1, t1, t2</code>
+<code>        sw t1, GPIO_OUTDR(t0)</code>
+<code></code>
+<code>1:</code>
+<code>        j 1b</code>
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-org028028b" class="outline-3">
+<h3 id="org028028b">調通 UART1 TX</h3>
+<div class="outline-text-3" id="text-org028028b">
+<p>
+CH32V307使用UART TX的流程:
+</p>
+
+<ol class="org-ol">
+<li>在RCC控制器裏面使能對應UART控制器的時鐘</li>
+
+<li>在GPIO控制器裏面配置引腳的模式爲推輓復用輸出</li>
+
+<li>在UART控制器裏面配置波特率，使能UART控制器，配置模式，使能TX</li>
+
+<li>將數據填入UART控制器，然後通過TX引腳發送出去</li>
+</ol>
+
+<p>
+配置PA9爲UART1 TX，然後配置UART控制器，然後使用115200波特率輸出一大堆 0x55，代碼在這裏:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-asm"><code>        .global _start</code>
+<code>_start:</code>
+<code>        .option norvc;</code>
+<code>        j reset</code>
+<code>        .option rvc;</code>
+<code></code>
+<code>reset:</code>
+<code>        .equ RCC_BASE, 0x40021000</code>
+<code>        .equ RCC_APB2PCENR, 0x18</code>
+<code>        .equ RCC_IOPB_EN, (1 &lt;&lt; 3)</code>
+<code>        .equ RCC_IOPA_EN, (1 &lt;&lt; 2)</code>
+<code>        .equ RCC_UART1_EN, (1 &lt;&lt; 14)</code>
+<code></code>
+<code>        # 使能时钟:</code>
+<code>        # GPIOA GPIOB</code>
+<code>        # UART1</code>
+<code>        li t0, RCC_BASE</code>
+<code>        lw t1, RCC_APB2PCENR(t0)</code>
+<code>        li t2, RCC_IOPB_EN | RCC_IOPA_EN | RCC_UART1_EN</code>
+<code>        or t1, t1, t2</code>
+<code>        sw t1, RCC_APB2PCENR(t0)</code>
+<code></code>
+<code>        .equ GPIOB_BASE, 0x40010C00</code>
+<code>        .equ GPIOA_BASE, 0x40010800</code>
+<code>        .equ GPIO_CFGLR, 0x00</code>
+<code>        .equ GPIO_CFGHR, 0x04</code>
+<code>        .equ GPIO_OUTDR, 0x0C</code>
+<code>        .equ GPIO_PB4CFG_MASK, (0xF &lt;&lt; 16)</code>
+<code>        .equ GPIO_PB4CFG_PPOUT_2Mhz, (0x2 &lt;&lt; 16)</code>
+<code>        .equ GPIO_PA15CFG_MASK, (0xF &lt;&lt; 28)</code>
+<code>        .equ GPIO_PA15CFG_PPOUT_2Mhz, (0x2 &lt;&lt; 28)</code>
+<code>        .equ GPIO_PA9CFG_MASK, (0xF &lt;&lt; 4)</code>
+<code>        .equ GPIO_PA9CFG_MUPPOUT_50Mhz, (0xB &lt;&lt; 4)</code>
+<code></code>
+<code>        # 将PB4配置为推挽输出模式</code>
+<code>        li t0, GPIOB_BASE</code>
+<code>        lw t1, GPIO_CFGLR(t0)</code>
+<code>        li t2, GPIO_PB4CFG_MASK</code>
+<code>        xori t2, t2, -1</code>
+<code>        and t1, t1, t2</code>
+<code>        li t2, GPIO_PB4CFG_PPOUT_2Mhz</code>
+<code>        or t1, t1, t2</code>
+<code>        sw t2, GPIO_CFGLR(t0)</code>
+<code></code>
+<code>        # 将PA15配置为推挽输出模式</code>
+<code>        # 将PA9配置为复用推挽输出模式</code>
+<code>        li t0, GPIOA_BASE</code>
+<code>        lw t1, GPIO_CFGHR(t0)</code>
+<code>        li t2, GPIO_PA15CFG_MASK | GPIO_PA9CFG_MASK</code>
+<code>        xori t2, t2, -1</code>
+<code>        and t1, t1, t2</code>
+<code>        li t2, GPIO_PA15CFG_PPOUT_2Mhz | GPIO_PA9CFG_MUPPOUT_50Mhz</code>
+<code>        or t1, t1, t2</code>
+<code>        sw t2, GPIO_CFGHR(t0)</code>
+<code></code>
+<code>        # PB4输出高电平</code>
+<code>        li t0, GPIOB_BASE</code>
+<code>        lw t1, GPIO_OUTDR(t0)</code>
+<code>        ori t1, t1, (1 &lt;&lt; 4)</code>
+<code>        sw t1, GPIO_OUTDR(t0)</code>
+<code></code>
+<code>        # PA15输出高电平</code>
+<code>        li t0, GPIOA_BASE</code>
+<code>        lw t1, GPIO_OUTDR(t0)</code>
+<code>        li t2, (1 &lt;&lt; 15)</code>
+<code>        or t1, t1, t2</code>
+<code>        sw t1, GPIO_OUTDR(t0)</code>
+<code></code>
+<code>        .equ UART1_BASE, 0x40013800</code>
+<code>        .equ UART_DATAR, 0x04</code>
+<code>        .equ UART_BRR,   0x08</code>
+<code></code>
+<code>        # 从寄存器手册内容和时钟树可以得到:</code>
+<code>        # UART1的时钟源为PCLK2,即APB2提供的</code>
+<code>        # PCLK2的时钟源是HCLK</code>
+<code>        # HCLK的时钟源是SYSCLK</code>
+<code></code>
+<code>        # SYSCLK默认使用HSI，SYSCLK=8Mhz</code>
+<code>        # SYSCLK根据HPRE分频得到HCLK，默认没有分频，HCLK=8Mhz</code>
+<code>        # HCLK根据PPRE2分频得到PCLK2，默认没有分频，PCLK2=8Mhz</code>
+<code></code>
+<code>        # 波特率计算公式:</code>
+<code>        # UART1这里的FCLK是PCLK2</code>
+<code>        # 波特率 = FCLK / (16 * UARTDIV)</code>
+<code>        # 那么:</code>
+<code>        # (8 * 1000 * 1000) / (16 * 4.34) = 115207</code>
+<code>        # UARTDIV=4.34</code>
+<code>        # UARTDIV的计算公式:</code>
+<code>        # UARTDIV=DIV_M+(DIV_F/16)</code>
+<code>        # 那么:</code>
+<code>        # 4 + (5 / 16) = 4.3125</code>
+<code>        # DIV_M=4</code>
+<code>        # DIV_F=5</code>
+<code></code>
+<code>        .equ BAUD_115200, ((4 &lt;&lt; 4) | (5 &lt;&lt; 0))</code>
+<code></code>
+<code>        li t0, UART1_BASE</code>
+<code></code>
+<code>        # 配置UART1波特率为115200</code>
+<code>        li t1, BAUD_115200</code>
+<code>        sw t1, UART_BRR(t0)</code>
+<code></code>
+<code>        # 使能UART控制器和TX功能</code>
+<code>        .equ UART_CTLR1, 0x0C</code>
+<code>        .equ UART_UE, (1 &lt;&lt; 13)</code>
+<code>        .equ UART_TE, (1 &lt;&lt; 3)</code>
+<code>        li t1, UART_UE | UART_TE</code>
+<code>        sw t1, UART_CTLR1(t0)</code>
+<code></code>
+<code>        # UART1 PA9 TX 不断发送0x55</code>
+<code>        li t0, UART1_BASE</code>
+<code>        li t1, 0x55</code>
+<code>1:</code>
+<code>        sw t1, UART_DATAR(t0)</code>
+<code>        j 1b</code>
+</pre>
+</div>
+
+<p>
+鏈接電路板的PA9到USB轉串口的RX腳，上電燒錄這段代碼，復位電路板，
+</p>
+
+<p>
+然後配置USB轉串口的波特率爲115200，打開串口軟件，會顯示接收到一大堆UUUU
+</p>
+
+<p>
+到這裏串口TX的程序仍然沒有結束，我們還需要處理一個問題:
+</p>
+
+<p>
+按UART控制器的速率傳輸數據，即我們需要UART控制器傳輸完成後再往發送寄存器填下一個字節的數據。
+</p>
+
+<p>
+我們需要改一下發送的代碼:
+</p>
+
+<div class="org-src-container">
+<pre class="src src-asm"><code>        # UART1 PA9 TX 不断发送 0x55 0x75</code>
+<code>        .equ UART_STATR, 0x00</code>
+<code>        .equ UART_TC, (1 &lt;&lt; 6)</code>
+<code>        li t0, UART1_BASE</code>
+<code>        li t2, 0x55</code>
+<code></code>
+<code>2:</code>
+<code>1:</code>
+<code>        lw t1, UART_STATR(t0)</code>
+<code>        andi t1, t1, UART_TC</code>
+<code>        beqz t1, 1b</code>
+<code>        sw t2, UART_DATAR(t0)</code>
+<code>        xori t2, t2, (1 &lt;&lt; 5)</code>
+<code>        j 2b  </code>
+</pre>
+</div>
+
+<p>
+這樣，你的串口軟件應該會收到一大堆UuUuUuUuUuUuUu了
+</p>
+</div>
+</div>
+
+<div id="outline-container-orgcdca285" class="outline-3">
+<h3 id="orgcdca285">END</h3>
+</div>
+</div>
+</div>
+<div id="postamble" class="status">
+<p>Last updated: 2024-10-03</p>
+</div>
+</body>
+</html>

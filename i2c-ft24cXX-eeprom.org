@@ -1,0 +1,11 @@
+* I2C FT24CXX EEPROM
+
+最近在自己的FORTH上实现I2C主机驱动来读写EEPROM
+
+之前以为FT24C系列的EEPROM和AT24系列兼容，结果不是这样的:
+
+1. FT24CXX 系列只有两个从机地址，一个用来读一个用来写
+
+2. FT24CXX 的数据地址是16bit的，发送的时候先发bit8~bit15，然后再发bit0~bit7
+
+

@@ -50,11 +50,17 @@ CH32V307裸机汇编指南
 
 [[file:ch32v307-asm-note.org]]
 
+[[file:ch32v307-01-uart-gpio-startup.org]]
+
 ** 点灯
 
 一些点灯思路
 
 [[file:bringup-note.org]]
+
+I2C FT24CXX EEPROM
+
+[[file:i2c-ft24cXX-eeprom.org]]
 
 ** Windows
 
